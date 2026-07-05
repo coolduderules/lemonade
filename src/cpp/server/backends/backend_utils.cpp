@@ -741,6 +741,25 @@ namespace lemon::backends {
                 }
             }
 
+            // Fix execute permission on the backend binary in the staging tree.
+            // Tarball archives may strip the execute bit; fix it before the
+            // atomic swap so a failed chmod cannot leave the currently-installed
+            // binary untouched (rollback preserved). On Windows chmod is a no-op.
+            std::string staged_exe = find_executable_in_dir(staging_dir, spec.binary);
+            #ifndef _WIN32
+            if (!staged_exe.empty()) {
+                if (chmod(staged_exe.c_str(), 0755) != 0) {
+                    std::error_code ec;
+                    ec.assign(errno, std::generic_category());
+                    throw std::runtime_error(
+                        "Failed to set executable permission on staged backend "
+                        + spec.binary + " at " + staged_exe + ": " + ec.message());
+                }
+                LOG(DEBUG, spec.log_name()) << "Set execute permission on staged binary: "
+                    << staged_exe << std::endl;
+            }
+            #endif
+
             // Verify the staged tree contains the executable, then atomically
             // swap it into place. commit_staged_install keeps a recoverable .old
             // backup across the swap: it removes the staging tree and leaves
@@ -756,17 +775,6 @@ namespace lemon::backends {
             staging_guard.active = false;
 
             LOG(DEBUG, spec.log_name()) << "Executable verified at: " << exe_path << std::endl;
-
-    #ifndef _WIN32
-            // Make all files in the install directory executable (tar may lose permissions)
-            // Use recursive iteration since tarballs may extract files directly to install_dir
-            // or into nested subdirectories without a dedicated bin/ directory.
-            for (auto& entry : fs::recursive_directory_iterator(install_dir)) {
-                if (entry.is_regular_file()) {
-                    chmod(entry.path().c_str(), 0755);
-                }
-            }
-    #endif
 
             // (The downloaded archive is removed by zip_guard on scope exit.)
 
