@@ -758,19 +758,14 @@ namespace lemon::backends {
             LOG(DEBUG, spec.log_name()) << "Executable verified at: " << exe_path << std::endl;
 
     #ifndef _WIN32
-            // Make all binaries in bin/ executable (tar may lose permissions)
-            {
-                auto bin_dir = fs::path(install_dir) / "bin";
-                if (fs::exists(bin_dir)) {
-                    for (auto& entry : fs::directory_iterator(bin_dir)) {
-                        if (entry.is_regular_file()) {
-                            chmod(entry.path().c_str(), 0755);
-                        }
-                    }
+            // Make all files in the install directory executable (tar may lose permissions)
+            // Use recursive iteration since tarballs may extract files directly to install_dir
+            // or into nested subdirectories without a dedicated bin/ directory.
+            for (auto& entry : fs::recursive_directory_iterator(install_dir)) {
+                if (entry.is_regular_file()) {
+                    chmod(entry.path().c_str(), 0755);
                 }
             }
-            // Also make the found executable itself executable
-            chmod(exe_path.c_str(), 0755);
     #endif
 
             // (The downloaded archive is removed by zip_guard on scope exit.)
